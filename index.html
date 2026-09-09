@@ -353,6 +353,7 @@ function renderCalendar(m){
    let k=dateKey(new Date(y,mo,d)),t=totals(k),cls=t.cal?(t.cal<=state.settings.cal?"good":"over"):"",today=k===dateKey();
    out+=`<div class="day ${cls} ${today?"today":""}" onclick="viewDay('${k}')">${d}${t.cal?`<small></small>`:""}</div>`;
  }
+  
  document.getElementById("cal").innerHTML=out;
 }
 window.viewDay=function(k){
