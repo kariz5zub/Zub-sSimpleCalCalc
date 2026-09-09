@@ -122,134 +122,70 @@ nav button{background:transparent;color:#777;padding:8px 14px;font-size:12px}nav
 <div id="modalBody"></div>
 </div></div>
 
-<script src="https://www.gstatic.com/firebasejs/11.10.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/11.10.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore-compat.js"></script>
 <script>
 /*
   ACCOUNT MODE
-  Cloud mode: Firebase Authentication + Cloud Firestore.
-  Replace FIREBASE_CONFIG with the config from your Firebase Web app.
+  This version uses browser-local accounts so the Login/Create account buttons
+  work immediately on GitHub Pages. For true cross-device accounts, replace this
+  auth layer with Firebase/Supabase later. Never treat local passwords as production security.
 */
-const FIREBASE_CONFIG={
-  apiKey:"PASTE_YOUR_API_KEY_HERE",
-  authDomain:"PASTE_YOUR_PROJECT.firebaseapp.com",
-  projectId:"PASTE_YOUR_PROJECT_ID_HERE",
-  storageBucket:"PASTE_YOUR_PROJECT.firebasestorage.app",
-  messagingSenderId:"PASTE_YOUR_MESSAGING_SENDER_ID_HERE",
-  appId:"PASTE_YOUR_APP_ID_HERE"
-};
-
-const firebaseReady=FIREBASE_CONFIG.apiKey && !FIREBASE_CONFIG.apiKey.startsWith("PASTE_") && FIREBASE_CONFIG.projectId && !FIREBASE_CONFIG.projectId.startsWith("PASTE_");
-let auth=null, db=null;
-if(firebaseReady){
-  firebase.initializeApp(FIREBASE_CONFIG);
-  auth=firebase.auth();
-  db=firebase.firestore();
-  auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(()=>{});
-}
-
 const KEY_PREFIX="nutritionUser_";
+const USERS_KEY="nutritionUsersV1";
 const SESSION_KEY="nutritionSessionV1";
-const KEY=()=>KEY_PREFIX+(currentUser?.uid||currentUser?.email?.toLowerCase()||"guest");
+
+const KEY=()=>KEY_PREFIX+(currentUser?.email?.toLowerCase()||"guest");
 const defaultState=()=>({
  settings:{start:188,current:188,target:170,height:70,age:30,sex:"male",lossRate:1,activity:1.55,date:new Date(new Date().setMonth(new Date().getMonth()+4)).toISOString().slice(0,10),cal:2000,protein:140,carbs:220,fat:65},
  entries:[],meals:[]
 });
 let state=defaultState();
 let currentUser=null;
-let cloudSaveTimer=null;
 
-function normalizeState(raw){
-  state={...defaultState(),...(raw||{})};
-  state.settings={...defaultState().settings,...(raw?.settings||{})};
-  state.entries=(state.entries||[]).map((e,n)=>({...e,id:e.id||("entry_"+Date.now()+"_"+n)}));
-  state.meals=state.meals||[];
-}
-function saveLocalFallback(){
-  if(currentUser)localStorage.setItem(KEY(),JSON.stringify(state));
-}
-async function save(){
-  if(!currentUser)return;
-  if(firebaseReady && db){
-    clearTimeout(cloudSaveTimer);
-    return new Promise((resolve,reject)=>{
-      cloudSaveTimer=setTimeout(async()=>{
-        try{await db.collection("users").doc(currentUser.uid).set({appState:state,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});resolve();}
-        catch(e){reject(e)}
-      },0);
-    });
-  }
-  saveLocalFallback();
-}
+function saveLocal(){if(currentUser)localStorage.setItem(KEY(),JSON.stringify(state))}
+async function save(){saveLocal()}
 async function loadUserData(){
-  if(firebaseReady && db && currentUser){
-    const snap=await db.collection("users").doc(currentUser.uid).get();
-    if(snap.exists && snap.data().appState){normalizeState(snap.data().appState);return;}
-  }
-  const raw=currentUser?localStorage.getItem(KEY()):null;
-  normalizeState(raw?JSON.parse(raw):null);
+ const raw=currentUser?localStorage.getItem(KEY()):null;
+ state=raw?{...defaultState(),...JSON.parse(raw)}:defaultState();
+ state.entries=(state.entries||[]).map((e,n)=>({...e,id:e.id||("entry_"+Date.now()+"_"+n)}));
+ state.meals=state.meals||[];
 }
-
 function dateKey(d=new Date()){return new Date(d.getFullYear(),d.getMonth(),d.getDate()).toISOString().slice(0,10)}
 function totals(key=dateKey()){return state.entries.filter(e=>e.date===key).reduce((a,e)=>({cal:a.cal+e.cal,protein:a.protein+e.protein,carbs:a.carbs+e.carbs,fat:a.fat+e.fat}),{cal:0,protein:0,carbs:0,fat:0})}
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]))}
 
-window.signUp=async function(){await authAction("signup")};
-window.signIn=async function(){await authAction("signin")};
-window.resetPassword=async function(){
-  if(!firebaseReady){msg("Cloud accounts are not connected yet. Add your Firebase configuration to index.html first.","error");return}
-  const email=document.getElementById("authEmail").value.trim().toLowerCase();
-  if(!email){msg("Enter your email first.","error");return}
-  try{await auth.sendPasswordResetEmail(email);msg("Password reset email sent. Check your inbox.","success")}
-  catch(e){msg(firebaseError(e),"error")}
+window.signUp=async()=>authAction("signup");
+window.signIn=async()=>authAction("signin");
+window.resetPassword=async()=>{
+ const email=document.getElementById("authEmail").value.trim().toLowerCase();
+ if(!email){msg("Enter your email first.","error");return}
+ const users=JSON.parse(localStorage.getItem(USERS_KEY)||"{}");
+ msg(users[email]?"This local demo account exists. Password recovery requires a real authentication service such as Firebase.":"No local account was found for that email.",users[email]?"success":"error");
 };
-window.signOut=async function(){
-  try{if(firebaseReady&&auth)await auth.signOut()}catch(e){}
-  currentUser=null;localStorage.removeItem(SESSION_KEY);
-  document.getElementById("appScreen").classList.add("hidden");document.getElementById("nav").classList.add("hidden");document.getElementById("authScreen").classList.remove("hidden");
+window.signOut=async()=>{
+ currentUser=null;localStorage.removeItem(SESSION_KEY);
+ document.getElementById("appScreen").classList.add("hidden");document.getElementById("nav").classList.add("hidden");document.getElementById("authScreen").classList.remove("hidden");
 };
-function firebaseError(e){
- const c=e?.code||"";
- if(c.includes("email-already-in-use"))return "An account already exists for this email. Try Log in.";
- if(c.includes("invalid-credential")||c.includes("wrong-password")||c.includes("user-not-found"))return "Incorrect email or password.";
- if(c.includes("weak-password"))return "Password must be at least 6 characters.";
- if(c.includes("invalid-email"))return "Please enter a valid email address.";
- return e?.message||"Something went wrong. Please try again.";
-}
 async function authAction(mode){
  const email=document.getElementById("authEmail").value.trim().toLowerCase(),pass=document.getElementById("authPassword").value;
  if(!email||!email.includes("@")){msg("Please enter a valid email address.","error");return}
  if(pass.length<6){msg("Password must be at least 6 characters.","error");return}
- if(!firebaseReady){
-   msg("Cloud accounts are not connected yet. This version requires Firebase so the same account works on your computer and phone.","error");return;
+ const users=JSON.parse(localStorage.getItem(USERS_KEY)||"{}");
+ if(mode==="signup"){
+   if(users[email]){msg("An account already exists for this email. Try Log in.","error");return}
+   users[email]={password:pass};localStorage.setItem(USERS_KEY,JSON.stringify(users));
+   currentUser={email};localStorage.setItem(SESSION_KEY,email);await loadUserData();enterApp();return;
  }
- try{
-   const credential=mode==="signup"?await auth.createUserWithEmailAndPassword(email,pass):await auth.signInWithEmailAndPassword(email,pass);
-   currentUser=credential.user;
-   await loadUserData();
-   await save();
-   enterApp();
- }catch(e){msg(firebaseError(e),"error")}
+ if(!users[email]){msg("No account found. Tap Create account first.","error");return}
+ if(users[email].password!==pass){msg("Incorrect password.","error");return}
+ currentUser={email};localStorage.setItem(SESSION_KEY,email);await loadUserData();enterApp();
 }
 function msg(text,type){document.getElementById("authMessage").innerHTML=`<div class="${type}">${esc(text)}</div>`}
 function enterApp(){
  document.getElementById("authScreen").classList.add("hidden");document.getElementById("appScreen").classList.remove("hidden");document.getElementById("nav").classList.remove("hidden");
  document.getElementById("accountEmail").textContent=currentUser.email;render();
 }
-if(firebaseReady){
-  auth.onAuthStateChanged(async user=>{
-    if(user){
-      currentUser=user;
-      try{await loadUserData();enterApp()}catch(e){msg("Signed in, but your cloud data could not be loaded. Check your Firestore rules.","error");}
-    }else{
-      currentUser=null;
-      document.getElementById("appScreen").classList.add("hidden");document.getElementById("nav").classList.add("hidden");document.getElementById("authScreen").classList.remove("hidden");
-    }
-  });
-}else{
-  document.getElementById("authMessage").innerHTML='<div class="error">Firebase is not configured yet. Follow the setup steps to enable computer ↔ phone accounts and syncing.</div>';
-}
+const savedSession=localStorage.getItem(SESSION_KEY);
+if(savedSession){currentUser={email:savedSession};loadUserData().then(enterApp)}
 
 window.show=function(id){
  document.querySelectorAll(".screen").forEach(x=>x.classList.remove("active"));
