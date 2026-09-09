@@ -36,8 +36,9 @@ nav button{background:transparent;color:#777;padding:8px 14px;font-size:12px}nav
       <label>Password</label><input id="authPassword" type="password" autocomplete="current-password" placeholder="At least 6 characters">
       <button class="full spaced" onclick="signIn()">Log in</button>
       <button class="full secondary spaced" onclick="signUp()">Create account</button>
-      <button class="full secondary spaced hidden" id="resetBtn" onclick="resetPassword()">Forgot password?</button>
-      <p class="muted small spaced">Local demo mode is available until you connect Firebase below. For friends and cross-device syncing, connect Firebase.</p>
+      <button class="full secondary spaced" onclick="signInWithGoogle()">Continue with Google</button>
+      <button class="full secondary spaced" id="resetBtn" onclick="resetPassword()">Forgot password?</button>
+      <p class="muted small spaced">Your account and nutrition data sync securely through Firebase across your devices.</p>
     </div>
   </div>
 </div>
@@ -122,70 +123,164 @@ nav button{background:transparent;color:#777;padding:8px 14px;font-size:12px}nav
 <div id="modalBody"></div>
 </div></div>
 
-<script>
-/*
-  ACCOUNT MODE
-  This version uses browser-local accounts so the Login/Create account buttons
-  work immediately on GitHub Pages. For true cross-device accounts, replace this
-  auth layer with Firebase/Supabase later. Never treat local passwords as production security.
-*/
-const KEY_PREFIX="nutritionUser_";
-const USERS_KEY="nutritionUsersV1";
-const SESSION_KEY="nutritionSessionV1";
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
+import {
+  getAuth,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  GoogleAuthProvider,
+  signInWithPopup,
+  sendPasswordResetEmail,
+  onAuthStateChanged,
+  signOut as firebaseSignOut
+} from "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js";
+import {
+  getFirestore,
+  doc,
+  getDoc,
+  setDoc,
+  serverTimestamp
+} from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
 
-const KEY=()=>KEY_PREFIX+(currentUser?.email?.toLowerCase()||"guest");
+const firebaseConfig = {
+  apiKey: "AIzaSyBRASq-Q_svaIKBy55WgYyXxsmvjevV_SQ",
+  authDomain: "nutrition-app-bab36.firebaseapp.com",
+  projectId: "nutrition-app-bab36",
+  storageBucket: "nutrition-app-bab36.firebasestorage.app",
+  messagingSenderId: "452320120812",
+  appId: "1:452320120812:web:58fe375272af028dd9bac9",
+  measurementId: "G-6YSPZZD7HV"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const googleProvider = new GoogleAuthProvider();
+
 const defaultState=()=>({
  settings:{start:188,current:188,target:170,height:70,age:30,sex:"male",lossRate:1,activity:1.55,date:new Date(new Date().setMonth(new Date().getMonth()+4)).toISOString().slice(0,10),cal:2000,protein:140,carbs:220,fat:65},
  entries:[],meals:[]
 });
 let state=defaultState();
 let currentUser=null;
+let authReady=false;
 
-function saveLocal(){if(currentUser)localStorage.setItem(KEY(),JSON.stringify(state))}
-async function save(){saveLocal()}
-async function loadUserData(){
- const raw=currentUser?localStorage.getItem(KEY()):null;
- state=raw?{...defaultState(),...JSON.parse(raw)}:defaultState();
- state.entries=(state.entries||[]).map((e,n)=>({...e,id:e.id||("entry_"+Date.now()+"_"+n)}));
- state.meals=state.meals||[];
+async function save(){
+  if(!currentUser) return;
+  await setDoc(doc(db,"users",currentUser.uid), {
+    state,
+    email: currentUser.email || "",
+    updatedAt: serverTimestamp()
+  }, {merge:true});
 }
+
+async function loadUserData(){
+  if(!currentUser) return;
+  const snap=await getDoc(doc(db,"users",currentUser.uid));
+  if(snap.exists() && snap.data().state){
+    const remote=snap.data().state;
+    state={...defaultState(),...remote,settings:{...defaultState().settings,...(remote.settings||{})}};
+  }else{
+    state=defaultState();
+    await save();
+  }
+  state.entries=(state.entries||[]).map((e,n)=>({...e,id:e.id||("entry_"+Date.now()+"_"+n)}));
+  state.meals=state.meals||[];
+}
+
+function friendlyAuthError(error){
+  const code=error?.code||"";
+  const map={
+    "auth/email-already-in-use":"An account already exists for this email.",
+    "auth/invalid-email":"Please enter a valid email address.",
+    "auth/weak-password":"Use a stronger password (at least 6 characters).",
+    "auth/invalid-credential":"Incorrect email or password.",
+    "auth/user-not-found":"No account was found for that email.",
+    "auth/wrong-password":"Incorrect email or password.",
+    "auth/popup-closed-by-user":"Google sign-in was cancelled.",
+    "auth/unauthorized-domain":"This website domain is not authorized in Firebase Authentication yet."
+  };
+  return map[code] || error?.message || "Something went wrong. Please try again.";
+}
+
+function msg(text,type){document.getElementById("authMessage").innerHTML=`<div class="${type}">${esc(text)}</div>`}
+
+window.signUp=async()=>{
+  const email=document.getElementById("authEmail").value.trim();
+  const pass=document.getElementById("authPassword").value;
+  if(!email){msg("Enter your email address.","error");return}
+  if(pass.length<6){msg("Password must be at least 6 characters.","error");return}
+  try{
+    msg("Creating account…","success");
+    await createUserWithEmailAndPassword(auth,email,pass);
+  }catch(e){msg(friendlyAuthError(e),"error")}
+};
+
+window.signIn=async()=>{
+  const email=document.getElementById("authEmail").value.trim();
+  const pass=document.getElementById("authPassword").value;
+  if(!email||!pass){msg("Enter your email and password.","error");return}
+  try{
+    msg("Signing in…","success");
+    await signInWithEmailAndPassword(auth,email,pass);
+  }catch(e){msg(friendlyAuthError(e),"error")}
+};
+
+window.signInWithGoogle=async()=>{
+  try{
+    await signInWithPopup(auth,googleProvider);
+  }catch(e){msg(friendlyAuthError(e),"error")}
+};
+
+window.resetPassword=async()=>{
+  const email=document.getElementById("authEmail").value.trim();
+  if(!email){msg("Enter your email first.","error");return}
+  try{
+    await sendPasswordResetEmail(auth,email);
+    msg("Password reset email sent. Check your inbox.","success");
+  }catch(e){msg(friendlyAuthError(e),"error")}
+};
+
+window.signOut=async()=>{
+  await firebaseSignOut(auth);
+};
+
+function enterApp(){
+  document.getElementById("authScreen").classList.add("hidden");
+  document.getElementById("appScreen").classList.remove("hidden");
+  document.getElementById("nav").classList.remove("hidden");
+  document.getElementById("accountEmail").textContent=currentUser?.email||"Signed in";
+  render();
+}
+
+function leaveApp(){
+  document.getElementById("appScreen").classList.add("hidden");
+  document.getElementById("nav").classList.add("hidden");
+  document.getElementById("authScreen").classList.remove("hidden");
+}
+
+onAuthStateChanged(auth, async user=>{
+  currentUser=user;
+  authReady=true;
+  if(user){
+    try{
+      await loadUserData();
+      enterApp();
+    }catch(e){
+      console.error(e);
+      msg("Signed in, but your data could not load. Check Firestore rules and connection.","error");
+      leaveApp();
+    }
+  }else{
+    state=defaultState();
+    leaveApp();
+  }
+});
+
 function dateKey(d=new Date()){return new Date(d.getFullYear(),d.getMonth(),d.getDate()).toISOString().slice(0,10)}
 function totals(key=dateKey()){return state.entries.filter(e=>e.date===key).reduce((a,e)=>({cal:a.cal+e.cal,protein:a.protein+e.protein,carbs:a.carbs+e.carbs,fat:a.fat+e.fat}),{cal:0,protein:0,carbs:0,fat:0})}
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]))}
-
-window.signUp=async()=>authAction("signup");
-window.signIn=async()=>authAction("signin");
-window.resetPassword=async()=>{
- const email=document.getElementById("authEmail").value.trim().toLowerCase();
- if(!email){msg("Enter your email first.","error");return}
- const users=JSON.parse(localStorage.getItem(USERS_KEY)||"{}");
- msg(users[email]?"This local demo account exists. Password recovery requires a real authentication service such as Firebase.":"No local account was found for that email.",users[email]?"success":"error");
-};
-window.signOut=async()=>{
- currentUser=null;localStorage.removeItem(SESSION_KEY);
- document.getElementById("appScreen").classList.add("hidden");document.getElementById("nav").classList.add("hidden");document.getElementById("authScreen").classList.remove("hidden");
-};
-async function authAction(mode){
- const email=document.getElementById("authEmail").value.trim().toLowerCase(),pass=document.getElementById("authPassword").value;
- if(!email||!email.includes("@")){msg("Please enter a valid email address.","error");return}
- if(pass.length<6){msg("Password must be at least 6 characters.","error");return}
- const users=JSON.parse(localStorage.getItem(USERS_KEY)||"{}");
- if(mode==="signup"){
-   if(users[email]){msg("An account already exists for this email. Try Log in.","error");return}
-   users[email]={password:pass};localStorage.setItem(USERS_KEY,JSON.stringify(users));
-   currentUser={email};localStorage.setItem(SESSION_KEY,email);await loadUserData();enterApp();return;
- }
- if(!users[email]){msg("No account found. Tap Create account first.","error");return}
- if(users[email].password!==pass){msg("Incorrect password.","error");return}
- currentUser={email};localStorage.setItem(SESSION_KEY,email);await loadUserData();enterApp();
-}
-function msg(text,type){document.getElementById("authMessage").innerHTML=`<div class="${type}">${esc(text)}</div>`}
-function enterApp(){
- document.getElementById("authScreen").classList.add("hidden");document.getElementById("appScreen").classList.remove("hidden");document.getElementById("nav").classList.remove("hidden");
- document.getElementById("accountEmail").textContent=currentUser.email;render();
-}
-const savedSession=localStorage.getItem(SESSION_KEY);
-if(savedSession){currentUser={email:savedSession};loadUserData().then(enterApp)}
 
 window.show=function(id){
  document.querySelectorAll(".screen").forEach(x=>x.classList.remove("active"));
@@ -222,10 +317,6 @@ function renderProgress(){
  const h=Number(s.height);let bmi="";
  if(h>0&&current>0){const b=current/(h*h)*703;bmi=`<div class="row"><span>BMI</span><b>${b.toFixed(1)}</b></div>`}
  document.getElementById("bodyStats").innerHTML=`<div class="row"><span>Current weight</span><b>${current} lb</b></div><div class="row spaced"><span>Height</span><b>${h? h+" in":"Not set"}</b></div>${bmi}`;
-}
-function renderSettings(){
- const s=state.settings;
- ["sStart","sCurrent","sHeight","sTarget","sDate","sCal","sProtein","sCarbs","sFat"].forEach((id,key)=>{const map=["start","current","height","target","date","cal","protein","carbs","fat"];document.getElementById(id).value=s[map[key]]??""});
 }
 function calculateTargets(s){
  const weightKg=(Number(s.current)||0)*0.453592;
@@ -353,7 +444,6 @@ function renderCalendar(m){
    let k=dateKey(new Date(y,mo,d)),t=totals(k),cls=t.cal?(t.cal<=state.settings.cal?"good":"over"):"",today=k===dateKey();
    out+=`<div class="day ${cls} ${today?"today":""}" onclick="viewDay('${k}')">${d}${t.cal?`<small></small>`:""}</div>`;
  }
-  
  document.getElementById("cal").innerHTML=out;
 }
 window.viewDay=function(k){
@@ -366,5 +456,6 @@ function renderConsistency(){
  let days=[];for(let i=6;i>=0;i--){let d=new Date();d.setDate(d.getDate()-i);let t=totals(dateKey(d));days.push(`<div class="row" style="padding:7px 0"><span>${d.toLocaleDateString(undefined,{weekday:"short"})}</span><span class="${t.cal&&t.cal<=state.settings.cal?'good':t.cal?'bad':''}">${t.cal?Math.round(t.cal)+" kcal":"—"}</span></div>`)}
  document.getElementById("consistency").innerHTML=days.join("");
 }
+
 </script>
 </body></html>
