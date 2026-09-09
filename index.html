@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<title>Nutrition</title>
+<style>
+:root{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Helvetica Neue",Arial,sans-serif;color:#111;background:#f7f7f7}
+*{box-sizing:border-box}body{margin:0;background:#f7f7f7}
+.app{max-width:620px;margin:auto;min-height:100vh;padding:env(safe-area-inset-top) 18px calc(90px + env(safe-area-inset-bottom))}
+header{padding:22px 2px 12px}h1{font-size:34px;margin:0 0 4px}h2{font-size:21px;margin:0 0 14px}p{margin:0}.muted{color:#777}
+.card{background:white;border-radius:18px;padding:18px;margin:12px 0;box-shadow:0 1px 3px #0000000b}
+.kcal{font-size:42px;font-weight:750;letter-spacing:-1px}.bar{height:9px;background:#e9e9e9;border-radius:9px;overflow:hidden;margin:12px 0}.fill{height:100%;background:#111;border-radius:9px}.over .fill{background:#e23b3b}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.macro{padding:13px;border-radius:14px;background:#f4f4f4}.macro b{display:block;font-size:18px;margin-top:5px}
+button{border:0;border-radius:13px;padding:13px 16px;font-size:16px;background:#111;color:white;font-weight:600}button.secondary{background:#eee;color:#111}button.danger{background:#fff0f0;color:#c22}.full{width:100%}
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px}.entry{padding:12px 0;border-bottom:1px solid #eee}.entry:last-child{border-bottom:0}
+input{width:100%;padding:13px;border:1px solid #ddd;border-radius:12px;font-size:16px;background:white}label{font-size:13px;color:#666;display:block;margin:12px 0 6px}
+nav{position:fixed;bottom:0;left:0;right:0;background:#ffffffee;backdrop-filter:blur(18px);border-top:1px solid #ddd;display:flex;justify-content:center;gap:8px;padding:10px env(safe-area-inset-right) calc(10px + env(safe-area-inset-bottom));z-index:4}
+nav button{background:transparent;color:#777;padding:8px 14px;font-size:12px}nav button.active{color:#111;background:#eee}
+.screen{display:none}.screen.active{display:block}.pill{font-size:13px;padding:6px 10px;border-radius:99px;background:#eee}.good{color:#18733a}.bad{color:#c22}
+.calendar{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}.day{text-align:center;padding:8px 2px;border-radius:10px;font-size:12px}.day small{display:block;margin-top:5px;width:7px;height:7px;border-radius:50%;background:#ccc;margin-left:auto;margin-right:auto}.day.good small{background:#111}.day.over small{background:#d33}.weekday{font-size:11px;color:#888;text-align:center;padding:5px}
+.modal{position:fixed;inset:0;background:#0005;display:none;align-items:flex-end;z-index:5}.modal.show{display:flex}.sheet{background:#f7f7f7;border-radius:24px 24px 0 0;width:100%;max-height:90vh;overflow:auto;padding:20px 18px calc(25px + env(safe-area-inset-bottom))}
+.meal{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #ddd}
+.stat{font-size:28px;font-weight:700}.small{font-size:13px}.spaced{margin-top:18px}
+</style>
+</head>
+<body>
+<div class="app">
+<section id="today" class="screen active">
+<header><h1>Today</h1><p class="muted" id="todayDate"></p></header>
+<div class="card" id="calCard"><div class="row"><div><div class="kcal" id="calories">0</div><div class="muted">of <span id="calGoal">2000</span> kcal</div></div><span class="pill" id="calStatus">0 left</span></div><div class="bar"><div class="fill" id="calFill"></div></div></div>
+<div class="grid">
+<div class="macro"><span class="muted">Protein</span><b id="protein">0 / 140g</b></div>
+<div class="macro"><span class="muted">Carbs</span><b id="carbs">0 / 220g</b></div>
+<div class="macro"><span class="muted">Fat</span><b id="fat">0 / 65g</b></div>
+</div>
+<button class="full spaced" onclick="openAdd()">＋ Add</button>
+<div class="card"><h2>Today's entries</h2><div id="entries"></div></div>
+</section>
+
+<section id="calendar" class="screen">
+<header><h1>Calendar</h1><p class="muted">Your calorie history</p></header>
+<div class="card"><div class="row"><button class="secondary" onclick="changeMonth(-1)">‹</button><b id="monthName"></b><button class="secondary" onclick="changeMonth(1)">›</button></div><div class="calendar spaced" id="cal"></div></div>
+</section>
+
+<section id="progress" class="screen">
+<header><h1>Progress</h1><p class="muted">Your target trajectory</p></header>
+<div class="card"><div class="row"><div><span class="muted small">Current</span><div class="stat" id="currentW">188 lb</div></div><div style="text-align:right"><span class="muted small">Target</span><div class="stat" id="targetW">170 lb</div></div></div><div class="bar spaced"><div class="fill" id="weightFill"></div></div><p class="muted" id="trajectory"></p></div>
+<div class="card"><h2>Recent calorie consistency</h2><div id="consistency"></div></div>
+</section>
+
+<section id="settings" class="screen">
+<header><h1>Settings</h1><p class="muted">Adjust your body and goals anytime.</p></header>
+<div class="card"><h2>Body & target</h2>
+<label>Current weight (lb)</label><input id="sCurrent" type="number" step=".1">
+<label>Height</label><input value="5'10&quot;" disabled>
+<label>Target weight (lb)</label><input id="sTarget" type="number" step=".1">
+<label>Target date</label><input id="sDate" type="date">
+</div>
+<div class="card"><h2>Daily targets</h2>
+<label>Calories</label><input id="sCal" type="number">
+<label>Protein (g)</label><input id="sProtein" type="number">
+<label>Carbs (g)</label><input id="sCarbs" type="number">
+<label>Fat (g)</label><input id="sFat" type="number">
+<button class="full spaced" onclick="saveSettings()">Save goals</button>
+</div>
+<div class="card"><h2>Saved meals</h2><div id="savedMeals"></div></div>
+</section>
+</div>
+
+<nav>
+<button id="nToday" class="active" onclick="show('today')">Today</button>
+<button id="nCalendar" onclick="show('calendar')">Calendar</button>
+<button id="nProgress" onclick="show('progress')">Progress</button>
+<button id="nSettings" onclick="show('settings')">Settings</button>
+</nav>
+
+<div class="modal" id="modal"><div class="sheet">
+<div class="row"><h2 id="modalTitle">Add</h2><button class="secondary" onclick="closeAdd()">Done</button></div>
+<div class="card"><button class="secondary" onclick="quickTab()" id="quickBtn">Quick entry</button> <button class="secondary" onclick="mealTab()" id="mealBtn">Saved meal</button></div>
+<div id="quick">
+<label>Name (optional)</label><input id="eName" placeholder="e.g. Chicken & rice">
+<label>Calories</label><input id="eCal" type="number" inputmode="decimal">
+<label>Protein (g)</label><input id="eProtein" type="number" inputmode="decimal">
+<label>Carbs (g)</label><input id="eCarbs" type="number" inputmode="decimal">
+<label>Fat (g)</label><input id="eFat" type="number" inputmode="decimal">
+<button class="full spaced" onclick="addEntry()">Add to today</button>
+</div>
+<div id="meals" style="display:none"><div id="mealList"></div><hr>
+<h2 class="spaced">Create a saved meal</h2>
+<label>Meal name</label><input id="mName" placeholder="e.g. Chicken pasta bowl">
+<label>Calories</label><input id="mCal" type="number">
+<label>Protein (g)</label><input id="mProtein" type="number">
+<label>Carbs (g)</label><input id="mCarbs" type="number">
+<label>Fat (g)</label><input id="mFat" type="number">
+<button class="full spaced" onclick="saveMeal()">Save meal</button></div>
+</div></div>
+
+<script>
+const KEY="personalNutritionV1";
+let state=JSON.parse(localStorage.getItem(KEY)||"null")||{settings:{current:188,target:170,date:new Date(new Date().setMonth(new Date().getMonth()+4)).toISOString().slice(0,10),cal:2000,protein:140,carbs:220,fat:65},entries:[],meals:[]};
+function save(){localStorage.setItem(KEY,JSON.stringify(state))}
+function dateKey(d=new Date()){return new Date(d).toISOString().slice(0,10)}
+function totals(key=dateKey()){return state.entries.filter(e=>e.date===key).reduce((a,e)=>({cal:a.cal+e.cal,protein:a.protein+e.protein,carbs:a.carbs+e.carbs,fat:a.fat+e.fat}),{cal:0,protein:0,carbs:0,fat:0})}
+function show(id){document.querySelectorAll('.screen').forEach(x=>x.classList.remove('active'));document.getElementById(id).classList.add('active');document.querySelectorAll('nav button').forEach(x=>x.classList.remove('active'));document.getElementById("n"+id[0].toUpperCase()+id.slice(1)).classList.add('active');render()}
+function render(){
+let s=state.settings,t=totals();document.getElementById("todayDate").textContent=new Date().toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric"});
+document.getElementById("calories").textContent=Math.round(t.cal);document.getElementById("calGoal").textContent=Math.round(s.cal);document.getElementById("calFill").style.width=Math.min(t.cal/s.cal*100,100)+"%";document.getElementById("calCard").classList.toggle("over",t.cal>s.cal);
+let left=s.cal-t.cal;let st=document.getElementById("calStatus");st.textContent=left>=0?Math.round(left)+" left":Math.round(-left)+" over";st.className="pill "+(left>=0?"":"bad");
+document.getElementById("protein").textContent=Math.round(t.protein)+" / "+s.protein+"g";document.getElementById("carbs").textContent=Math.round(t.carbs)+" / "+s.carbs+"g";document.getElementById("fat").textContent=Math.round(t.fat)+" / "+s.fat+"g";
+document.getElementById("entries").innerHTML=state.entries.filter(e=>e.date===dateKey()).map(e=>`<div class="entry"><div class="row"><div><b>${esc(e.name||"Quick entry")}</b><div class="small muted">${Math.round(e.protein)}g protein · ${Math.round(e.carbs)}g carbs · ${Math.round(e.fat)}g fat</div></div><span>${Math.round(e.cal)} kcal</span></div></div>`).join("")||'<p class="muted">Nothing logged yet.</p>';
+document.getElementById("currentW").textContent=s.current+" lb";document.getElementById("targetW").textContent=s.target+" lb";
+let loss=s.current-s.target, targetDate=new Date(s.date+"T12:00:00"), days=Math.max(1,Math.round((targetDate-new Date())/86400000));let pct=loss<=0?1:Math.min(1,Math.max(0,((s.current-(s.current-loss*0))/loss)));document.getElementById("weightFill").style.width=(loss<=0?100:0)+"%";
+document.getElementById("trajectory").textContent=days>0?`Lose ${Math.max(0,loss).toFixed(1)} lb by ${targetDate.toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"})} · about ${(Math.max(0,loss)/days*7).toFixed(2)} lb/week needed.`:"Target date has arrived.";
+let month=window.calMonth||new Date();renderCalendar(month);renderMeals();renderSettings();renderConsistency();
+}
+function addEntry(){let v=id=>Number(document.getElementById(id).value)||0;state.entries.push({date:dateKey(),name:document.getElementById("eName").value,cal:v("eCal"),protein:v("eProtein"),carbs:v("eCarbs"),fat:v("eFat")});save();["eName","eCal","eProtein","eCarbs","eFat"].forEach(id=>document.getElementById(id).value="");closeAdd();render()}
+function openAdd(){document.getElementById("modal").classList.add("show");quickTab()}
+function closeAdd(){document.getElementById("modal").classList.remove("show")}
+function quickTab(){document.getElementById("quick").style.display="block";document.getElementById("meals").style.display="none"}
+function mealTab(){document.getElementById("quick").style.display="none";document.getElementById("meals").style.display="block";renderMeals()}
+function saveMeal(){let v=id=>Number(document.getElementById(id).value)||0;let n=document.getElementById("mName").value.trim();if(!n)return;state.meals.push({name:n,cal:v("mCal"),protein:v("mProtein"),carbs:v("mCarbs"),fat:v("mFat")});save();["mName","mCal","mProtein","mCarbs","mFat"].forEach(id=>document.getElementById(id).value="");renderMeals();render()}
+function renderMeals(){document.getElementById("mealList").innerHTML=state.meals.map((m,i)=>`<div class="meal"><div><b>${esc(m.name)}</b><div class="small muted">${m.cal} kcal · ${m.protein}g protein · ${m.carbs}g carbs · ${m.fat}g fat</div></div><button onclick="addMeal(${i})">Add</button></div>`).join("")||'<p class="muted">No saved meals yet.</p>';document.getElementById("savedMeals").innerHTML=state.meals.map((m,i)=>`<div class="meal"><div><b>${esc(m.name)}</b><div class="small muted">${m.cal} kcal · ${m.protein}g protein</div></div><button class="danger" onclick="deleteMeal(${i})">Delete</button></div>`).join("")||'<p class="muted">No saved meals yet.</p>'}
+function addMeal(i){let m=state.meals[i];state.entries.push({date:dateKey(),name:m.name,cal:m.cal,protein:m.protein,carbs:m.carbs,fat:m.fat});save();closeAdd();render()}
+function deleteMeal(i){state.meals.splice(i,1);save();render()}
+function saveSettings(){let s=state.settings; s.current=Number(document.getElementById("sCurrent").value)||s.current;s.target=Number(document.getElementById("sTarget").value)||s.target;s.date=document.getElementById("sDate").value||s.date;s.cal=Number(document.getElementById("sCal").value)||s.cal;s.protein=Number(document.getElementById("sProtein").value)||s.protein;s.carbs=Number(document.getElementById("sCarbs").value)||s.carbs;s.fat=Number(document.getElementById("sFat").value)||s.fat;save();render();alert("Goals saved.")}
+function renderSettings(){let s=state.settings;document.getElementById("sCurrent").value=s.current;document.getElementById("sTarget").value=s.target;document.getElementById("sDate").value=s.date;document.getElementById("sCal").value=s.cal;document.getElementById("sProtein").value=s.protein;document.getElementById("sCarbs").value=s.carbs;document.getElementById("sFat").value=s.fat}
+function renderCalendar(m){let y=m.getFullYear(),mo=m.getMonth(),first=new Date(y,mo,1),days=new Date(y,mo+1,0).getDate();document.getElementById("monthName").textContent=first.toLocaleDateString(undefined,{month:"long",year:"numeric"});let out=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(x=>`<div class="weekday">${x}</div>`).join("");for(let i=0;i<first.getDay();i++)out+="<div></div>";for(let d=1;d<=days;d++){let k=dateKey(new Date(y,mo,d)),t=totals(k),cls=t.cal?(t.cal<=state.settings.cal?"good":"over"):"";out+=`<div class="day ${cls}">${d}${t.cal?`<small></small>`:""}</div>`}document.getElementById("cal").innerHTML=out}
+function changeMonth(n){let m=window.calMonth||new Date();window.calMonth=new Date(m.getFullYear(),m.getMonth()+n,1);render()}
+function renderConsistency(){let days=[];for(let i=6;i>=0;i--){let d=new Date();d.setDate(d.getDate()-i);let t=totals(dateKey(d));days.push(`<div class="row" style="padding:7px 0"><span>${d.toLocaleDateString(undefined,{weekday:"short"})}</span><span class="${t.cal&&t.cal<=state.settings.cal?'good':t.cal?'bad':''}">${t.cal?Math.round(t.cal)+" kcal":"—"}</span></div>`)}document.getElementById("consistency").innerHTML=days.join("")}
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]))}
+render();
+</script>
+</body></html>
